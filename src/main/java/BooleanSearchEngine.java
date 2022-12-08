@@ -2,21 +2,25 @@ import com.itextpdf.kernel.pdf.PdfDocument;
 import com.itextpdf.kernel.pdf.PdfReader;
 import com.itextpdf.kernel.pdf.canvas.parser.PdfTextExtractor;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
 import java.util.*;
 
 public class BooleanSearchEngine implements SearchEngine {
+    protected Map<String, List<PageEntry>> answer = new HashMap<>();
 
-    private Map<String, List<PageEntry>> pageEntryAll = new HashMap<>();
-    private Set<String> stopWord =new HashSet<>();
+    public BooleanSearchEngine(File pdfs) throws IOException {
 
-    public BooleanSearchEngine(File pdfsDir) throws IOException {
-        if (pdfsDir.isDirectory()) {
-            for (File item : pdfsDir.listFiles()) {
-                var doc = new PdfDocument(new PdfReader(item));
+        if (pdfs.listFiles() != null) {
+            for (File pdf : pdfs.listFiles()) {
+                var doc = new PdfDocument(new PdfReader(pdf));
+
                 for (int i = 1; i <= doc.getNumberOfPages(); i++) {
                     var text = PdfTextExtractor.getTextFromPage(doc.getPage(i));
                     var words = text.split("\\P{IsAlphabetic}+");
+
                     Map<String, Integer> freqs = new HashMap<>();
                     for (var word : words) {
                         if (word.isEmpty()) {
@@ -25,85 +29,67 @@ public class BooleanSearchEngine implements SearchEngine {
                         word = word.toLowerCase();
                         freqs.put(word, freqs.getOrDefault(word, 0) + 1);
                     }
-                    for (Map.Entry<String, Integer> freqsWord : freqs.entrySet()) {
-                        List<PageEntry> pageEntries = new ArrayList<>();
-                        if (!pageEntryAll.containsKey(freqsWord.getKey())) {
-                            pageEntries.add(new PageEntry(item.getName(), i, freqsWord.getValue()));
-                            pageEntryAll.put(freqsWord.getKey(), pageEntries);
-                        } else {
-                            pageEntries = pageEntryAll.get(freqsWord.getKey());
-                            pageEntries.add(new PageEntry(item.getName(), i, freqsWord.getValue()));
-                            pageEntryAll.put(freqsWord.getKey(), pageEntries);
-                            Collections.sort(pageEntryAll.get(freqsWord.getKey()), PageEntry::compareTo);
-                        }
+
+                    for (Map.Entry<String, Integer> pair : freqs.entrySet()) {
+                        var word = pair.getKey();
+                        var count = pair.getValue();
+                        List<PageEntry> list = answer.getOrDefault(word, new ArrayList<>());
+                        list.add(new PageEntry(pdf.getName(), i, count));
+                        list.sort(Collections.reverseOrder());
+                        answer.put(word, list);
                     }
                 }
             }
-        }
-
-        try (BufferedReader textFile = new BufferedReader(new FileReader("stop-ru.txt"))) {
-            String s;
-            while ((s = textFile.readLine()) != null) {
-                stopWord.add(s);
-            }
-
-        } catch (FileNotFoundException e) {
-            throw new RuntimeException(e);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
         }
     }
 
     @Override
     public List<PageEntry> search(String word) {
+        List<PageEntry> listAnswer = new ArrayList<>();
 
-        List<PageEntry> listNoFirstWord = new ArrayList<>();
-        List<PageEntry> allWord = new ArrayList<>();
-
-        String[] wordMassive = word.toLowerCase().split("\\P{IsAlphabetic}+");
-        List<String> wordsSearch = new ArrayList<>();
-        for (String wordSearch : wordMassive) {
-            if (!stopWord.contains(wordSearch)) {
-                wordsSearch.add(wordSearch);
+        try (BufferedReader reader = new BufferedReader(new FileReader("stop-ru.txt"))) {
+            String string;
+            List<String> stopWords = new ArrayList<>();
+            while ((string = reader.readLine()) != null) {
+                stopWords.add(string);
             }
-        }
 
-        for (String oneWordSearch : wordsSearch) {
-            allWord.addAll(pageEntryAll.get(oneWordSearch));
-            break;
-        }
-
-        int value = -1;
-        for (String oneWordSearch : wordsSearch) {
-            if (value == -1) {
-                listNoFirstWord = pageEntryAll.get(oneWordSearch);
-                listNoFirstWord.clear();
-                value++;
-                continue;
+            String[] words = word.toLowerCase().split("\\P{IsAlphabetic}+");
+            List<String> newWords = new ArrayList<>();
+            for (String s : words) {
+                if (!stopWords.contains(s)) {
+                    newWords.add(s);
+                }
             }
-            listNoFirstWord = pageEntryAll.get(oneWordSearch);
-            for (PageEntry o : listNoFirstWord) {
-                value = 0;
-                for (PageEntry o1 : allWord) {
-                    if (o.getPdfName().equals(o1.getPdfName()) && o.getPage() == o1.getPage()) {
-                        allWord.remove(o1);
-                        allWord.add(new PageEntry(o1.getPdfName(), o1.getPage(), (o.getCount() + o1.getCount())));
-                        value++;
-                        break;
+
+            listAnswer.addAll(answer.get(newWords.get(0)));
+            for (int i = 1; i < newWords.size(); i++) {
+                List<PageEntry> listWordTwo = new ArrayList<>(answer.get(newWords.get(i)));
+
+                for (PageEntry pageWordTwo : listWordTwo) {
+                    int counter = 0;
+
+                    for (PageEntry pageAnswer : listAnswer) {
+                        if (pageAnswer.samePage(pageWordTwo)) {
+                            String pdfName = pageAnswer.getPdfName();
+                            int page = pageAnswer.getPage();
+                            int count = pageAnswer.getCount() + pageWordTwo.getCount();
+                            listAnswer.remove(pageAnswer);
+                            listAnswer.add(new PageEntry(pdfName, page, count));
+                            counter++;
+                            break;
+                        }
+                    }
+                    if (counter == 0) {
+                        listAnswer.add(pageWordTwo);
                     }
                 }
-                if (value == 0) {
-                    allWord.add(o);
-                }
             }
-        }
+            listAnswer.sort(Collections.reverseOrder());
 
-        allWord.sort(PageEntry::compareTo);
-
-        if (allWord != null) {
-            return allWord;
-        } else {
-            return Collections.emptyList();
+        } catch (IOException ex) {
+            System.out.println(ex.getMessage());
         }
+        return listAnswer;
     }
 }

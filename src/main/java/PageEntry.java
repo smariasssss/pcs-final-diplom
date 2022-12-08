@@ -10,12 +10,21 @@ public class PageEntry implements Comparable<PageEntry> {
     }
 
     @Override
+    public int compareTo(PageEntry p) {
+        return Integer.compare(count, p.count);
+    }
+
+    @Override
     public String toString() {
-        return "PageEntry{" +
-                "pdfName='" + pdfName + '\'' +
-                ", page=" + page +
-                ", count=" + count +
-                '}';
+        return "\nPageEntry{" +
+                "'pdfName'=" + pdfName +
+                ",\n'page'=" + page +
+                ",\n'count'=" + count +
+                '}'+"\n";
+    }
+
+    public Boolean samePage(PageEntry page) {
+        return (page.pdfName.equals(this.pdfName)) && (page.page == this.page);
     }
 
     public String getPdfName() {
@@ -28,13 +37,5 @@ public class PageEntry implements Comparable<PageEntry> {
 
     public int getCount() {
         return count;
-    }
-
-    @Override
-    public int compareTo(PageEntry o) {
-        if (count == o.count) {
-            return Integer.compare(count,o.count);
-        }
-        return Integer.compare(o.count, count);
     }
 }
